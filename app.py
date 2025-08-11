@@ -37,7 +37,7 @@ def get_page_info(url):
         load_time = round(time.time() - t0, 2)
         status = response.status_code
         if status >= 400:
-            return None, None
+            return None, f"HTTP error code: {status}"
         soup = BeautifulSoup(response.content, "lxml")
         schema_jsonld = soup.find_all("script", type="application/ld+json")
         has_jsonld = len(schema_jsonld) > 0
@@ -79,9 +79,11 @@ def get_page_info(url):
             "Has JSON-LD Schema": has_jsonld,
             "Has Microdata Schema": has_microdata,
             "Has RDFa Schema": has_rdfa,
-        }, soup
+        }, None # No soup needed below
+    except requests.RequestException as e:
+        return None, f"Connection/Timeout error: {e}"
     except Exception as e:
-        return None, None
+        return None, f"Other error: {e}"
 
 st.title("SEO Bulk Audit Web Tool")
 st.write("Paste your page URLs below (one per line) and click 'Run Audit'.")
@@ -91,23 +93,33 @@ run_button = st.button("Run Audit")
 
 if run_button and url_input.strip():
     raw_urls = [line.strip() for line in url_input.strip().split('\n') if line.strip()]
-    st.info(f"Crawling {len(raw_urls)} URLs. Please wait (takes 1–2 seconds per page)...")
+    st.info(f"Crawling {len(raw_urls)} URLs. Please wait (1–2 seconds per page)...")
     results = []
+    errors = []
     visited = set()
     progress = st.progress(0)
     for i, url in enumerate(raw_urls, 1):
         if url in visited:
             continue
         visited.add(url)
-        page_data, _ = get_page_info(url)
+        page_data, err_reason = get_page_info(url)
         if page_data:
             results.append(page_data)
         else:
-            st.error(f"Failed to crawl: {url}")
+            msg = f"Failed to crawl: {url}"
+            if err_reason:
+                msg += f" | Reason: {err_reason}"
+            errors.append(msg)
         progress.progress(i / len(raw_urls))
-        time.sleep(1)
+        time.sleep(1)  # Polite to servers
+
     df = pd.DataFrame(results)
     st.success("Audit complete! Use the buttons below to download your reports.")
+
+    if errors:
+        st.write("#### Crawl Errors:")
+        for e in errors:
+            st.error(e)
     if df.empty:
         st.warning("No pages were successfully audited. Please check your URLs and try again.")
     else:
