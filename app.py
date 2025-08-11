@@ -5,36 +5,22 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 
-# --- Custom CSS for black background and white footer text ---
+# --- UI Styling ---
 st.markdown("""
     <style>
-        .stApp {
-            background-color: black !important;  /* Black background */
-        }
-        /* Hide default Streamlit footer */
+        .stApp { background-color: black !important; }
         footer {visibility: hidden;}
-        /* Custom footer bar */
         .custom-footer {
-            position: fixed;
-            left: 0;
-            bottom: 0;
-            width: 100vw;
-            background-color: #1976d2 !important;  /* Deep blue footer */
-            color: white !important;               /* White text */
-            font-weight: bold;
-            text-align: center;
-            padding: 12px 0;
-            font-size: 17px;
-            opacity: 0.97;
-            z-index: 9999;
+            position: fixed; left: 0; bottom: 0; width: 100vw;
+            background-color: #1976d2 !important; color: white !important;
+            font-weight: bold; text-align: center; padding: 12px 0;
+            font-size: 17px; opacity: 0.97; z-index: 9999;
         }
     </style>
     <div class="custom-footer">
         Developed by Himanshu &amp; Ahezam
     </div>
 """, unsafe_allow_html=True)
-
-# ----- SEO Audit Logic -----
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; SEO-AnalyzerBot/1.0; +https://yourdomain.com/bot)"
@@ -50,18 +36,13 @@ def get_page_info(url):
         response = requests.get(url, timeout=10, headers=HEADERS)
         load_time = round(time.time() - t0, 2)
         status = response.status_code
-
         if status >= 400:
             return None, None
-
         soup = BeautifulSoup(response.content, "lxml")
-
-        # SCHEMA DETECTION
         schema_jsonld = soup.find_all("script", type="application/ld+json")
         has_jsonld = len(schema_jsonld) > 0
         has_microdata = bool(soup.find(attrs={"itemscope": True}))
         has_rdfa = bool(soup.find(attrs={"typeof": True}))
-
         title = soup.title.string.strip() if soup.title else "No Title"
         meta_desc = soup.find("meta", attrs={"name": "description"})
         meta_desc = meta_desc['content'].strip() if meta_desc and 'content' in meta_desc.attrs else "No Meta Description"
@@ -69,14 +50,11 @@ def get_page_info(url):
         canonical = canonical['href'] if canonical and 'href' in canonical.attrs else "No Canonical"
         h1_tags = [h.get_text(strip=True) for h in soup.find_all("h1")]
         word_count = len(soup.get_text().split())
-
         imgs = soup.find_all("img")
         image_count = len(imgs)
         missing_alt = sum(1 for img in imgs if not img.get("alt"))
-
         robots_tag = soup.find("meta", attrs={"name": "robots"})
         robots_value = robots_tag['content'].strip() if robots_tag and 'content' in robots_tag.attrs else "None"
-
         external_links = []
         for a_tag in soup.find_all("a", href=True):
             href = urljoin(url, a_tag['href'])
@@ -85,7 +63,6 @@ def get_page_info(url):
                 if get_domain(url) not in parsed.netloc:
                     external_links.append(href)
         external_link_count = len(external_links)
-
         return {
             "URL": url,
             "Status Code": status,
@@ -103,11 +80,9 @@ def get_page_info(url):
             "Has Microdata Schema": has_microdata,
             "Has RDFa Schema": has_rdfa,
         }, soup
-
     except Exception as e:
         return None, None
 
-# ----------- Streamlit Web App -------------
 st.title("SEO Bulk Audit Web Tool")
 st.write("Paste your page URLs below (one per line) and click 'Run Audit'.")
 
@@ -127,9 +102,14 @@ if run_button and url_input.strip():
         page_data, _ = get_page_info(url)
         if page_data:
             results.append(page_data)
+        else:
+            st.error(f"Failed to crawl: {url}")
         progress.progress(i / len(raw_urls))
-        time.sleep(1)  # Polite to servers
+        time.sleep(1)
     df = pd.DataFrame(results)
     st.success("Audit complete! Use the buttons below to download your reports.")
-    st.dataframe(df)
-    st.download_button("Download All Results as CSV", df.to_csv(index=False), file_name="seo_audit_report.csv")
+    if df.empty:
+        st.warning("No pages were successfully audited. Please check your URLs and try again.")
+    else:
+        st.dataframe(df)
+        st.download_button("Download All Results as CSV", df.to_csv(index=False), file_name="seo_audit_report.csv")
